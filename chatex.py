@@ -3,6 +3,16 @@ from ctransformers import AutoModelForCausalLM
 import chainlit as cl
 
 
+print("Loading LLM...")
+
+llm = AutoModelForCausalLM.from_pretrained(
+    "zoltanctoth/orca_mini_3B-GGUF",
+    model_file="orca-mini-3b.q4_0.gguf"
+)
+
+print("LLM loaded successfully.")
+
+
 def clean_response(text: str) -> str:
     """
     Removes any accidental role continuation like 'User:' from the model output.
@@ -14,13 +24,13 @@ def clean_response(text: str) -> str:
 
 def get_prompt(instruction: str, history: List[str]) -> str:
     system = (
-        "You are a friendly assistant designed for veterans.\n"
+        "You are a friendly helpful AI assistant designed for veterans.\n"
         "You chat about daily life, military memories, and personal experiences.\n"
         "You help users cope with stress, loneliness, and low mood in a natural, human way.\n\n"
 
         "Guidelines:\n"
         "- Be kind, supportive, and conversational.\n"
-        "- It is okay to give advice and ask thoughtful follow-up questions.\n"
+        "- It is okay to give advice and ask thoughtful follow-up questions only if needed.\n"
         "- You may sound reflective, like a good listener.\n"
         "- Do NOT give medical advice, diagnoses, or treatment recommendations.\n\n"
 
@@ -43,12 +53,6 @@ def get_prompt(instruction: str, history: List[str]) -> str:
 def on_chat_start():
     cl.user_session.set("message_history", [])
 
-    global llm
-    llm = AutoModelForCausalLM.from_pretrained(
-        "zoltanctoth/orca_mini_3B-GGUF",
-        model_file="orca-mini-3b.q4_0.gguf"
-    )
-
 
 @cl.on_message
 async def on_message(message: cl.Message):
@@ -65,20 +69,20 @@ async def on_message(message: cl.Message):
         stream=True,
         max_new_tokens=120,
         temperature=0.7,
-        stop=["User:"]  # 🛑 CRITICAL FIX: stop self-dialogue
+        stop=["User:"]  # stop self-dialogue
     ):
         await msg.stream_token(token)
         response += token
 
     await msg.update()
 
-    # ✅ Clean assistant output before saving
+    # Clean assistant output before saving
     clean = clean_response(response)
 
     message_history.append(f"User: {message.content}")
     message_history.append(f"Assistant: {clean}")
 
-    # ✅ Keep last N turns only
+    # Keep last N turns only
     MAX_TURNS = 4
     if len(message_history) > MAX_TURNS * 2:
         message_history = message_history[-MAX_TURNS * 2:]
