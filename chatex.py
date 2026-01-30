@@ -12,6 +12,19 @@ llm = AutoModelForCausalLM.from_pretrained(
 
 print("LLM loaded successfully.")
 
+print("Warming up LLM...")
+
+_ = list(
+    llm(
+        "User: Hello\nAssistant:",
+        max_new_tokens=128,
+        temperature=0.7,
+        stop=["User:"]
+    )
+)
+
+print("LLM warm-up complete.")
+
 
 def clean_response(text: str) -> str:
     """
