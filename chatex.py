@@ -44,7 +44,6 @@ def get_prompt(instruction: str, history: List[str]) -> str:
         "Guidelines:\n"
         "- Be kind, supportive, and conversational.\n"
         "- It is okay to give advice and ask thoughtful follow-up questions only if needed.\n"
-        "- You may sound reflective, like a good listener.\n"
         "- Do NOT give medical advice, diagnoses, or treatment recommendations.\n\n"
 
         "Keep responses clear and reasonably short.\n"
