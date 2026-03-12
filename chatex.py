@@ -1,29 +1,21 @@
 from typing import List
-from ctransformers import AutoModelForCausalLM
+import os
+
 import chainlit as cl
+from groq import AsyncGroq
 
+print("Initializing Groq client...")
 
-print("Loading LLM...")
-
-llm = AutoModelForCausalLM.from_pretrained(
-    "zoltanctoth/orca_mini_3B-GGUF",
-    model_file="orca-mini-3b.q4_0.gguf"
-)
-
-print("LLM loaded successfully.")
-
-print("Warming up LLM...")
-
-_ = list(
-    llm(
-        "User: Hello\nAssistant:",
-        max_new_tokens=128,
-        temperature=0.7,
-        stop=["User:"]
+api_key = os.getenv("GROQ_API_KEY")
+if not api_key:
+    raise RuntimeError(
+        "GROQ_API_KEY environment variable is not set. "
+        "Set it before running: export GROQ_API_KEY='gsk_...'"
     )
-)
 
-print("LLM warm-up complete.")
+client = AsyncGroq(api_key=api_key)
+
+print("Client initialized.")
 
 
 def clean_response(text: str) -> str:
@@ -37,26 +29,25 @@ def clean_response(text: str) -> str:
 
 def get_prompt(instruction: str, history: List[str]) -> str:
     system = (
-        "You are a friendly helpful AI assistant designed for veterans.\n"
-        "You chat about daily life, military memories, and personal experiences.\n"
-        "You help users cope with stress, loneliness, and low mood in a natural, human way.\n\n"
-
+        "You are a friendly, helpful AI assistant for relatives and loved ones of military veterans.\n"
+        "You answer general questions about veterans' mental and physical health, well-being, and daily life.\n"
+        "You do NOT have access to any specific veteran's medical records or personal information.\n\n"
         "Guidelines:\n"
-        "- Be kind, supportive, and conversational.\n"
-        "- It is okay to give advice and ask thoughtful follow-up questions only if needed.\n"
-        "- Do NOT give medical advice, diagnoses, or treatment recommendations.\n\n"
-
-        "Keep responses clear and reasonably short.\n"
+        "- Focus on supporting the relative: their concerns, feelings, and questions.\n"
+        "- Give clear, practical suggestions on how to support and communicate with a veteran.\n"
+        "- You may explain general concepts from health reports or medical/psychological terms in simple language.\n"
+        "- Always stay general: do NOT interpret or diagnose a specific person's condition or test results.\n"
+        "- Do NOT give medical advice, diagnoses, or treatment recommendations.\n"
+        "- Encourage talking to qualified healthcare professionals for any specific medical or crisis concerns.\n\n"
+        "Keep responses clear, empathetic, and reasonably short.\n"
     )
 
     prompt = f"### System:\n{system}\n\n"
 
-    # ✅ Role-separated memory
     if history:
         for turn in history:
             prompt += f"{turn}\n"
 
-    # 🔑 IMPORTANT: model must stop after Assistant response
     prompt += f"\nUser: {instruction}\nAssistant:"
     return prompt
 
@@ -76,25 +67,31 @@ async def on_message(message: cl.Message):
     prompt = get_prompt(message.content, message_history)
 
     response = ""
-    for token in llm(
-        prompt,
-        stream=True,
-        max_new_tokens=120,
+
+    stream = await client.chat.completions.create(
+        model="llama-3.1-8b-instant",  # Groq model
+        messages=[
+            {"role": "user", "content": prompt},
+        ],
+        max_tokens=120,
         temperature=0.7,
-        stop=["User:"]  # stop self-dialogue
-    ):
-        await msg.stream_token(token)
-        response += token
+        stream=True,
+    )
+
+    async for chunk in stream:
+        delta = chunk.choices[0].delta.content or ""
+        if not delta:
+            continue
+        await msg.stream_token(delta)
+        response += delta
 
     await msg.update()
 
-    # Clean assistant output before saving
     clean = clean_response(response)
 
     message_history.append(f"User: {message.content}")
     message_history.append(f"Assistant: {clean}")
 
-    # Keep last N turns only
     MAX_TURNS = 4
     if len(message_history) > MAX_TURNS * 2:
         message_history = message_history[-MAX_TURNS * 2:]
