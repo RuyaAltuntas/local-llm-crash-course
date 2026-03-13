@@ -4,14 +4,18 @@ from pathlib import Path
 
 import chainlit as cl
 from groq import AsyncGroq
+from dotenv import load_dotenv
+
+# Load variables from .env file automatically
+load_dotenv()
 
 print("Initializing Groq client...")
 
 api_key = os.getenv("GROQ_API_KEY")
 if not api_key:
     raise RuntimeError(
-        "GROQ_API_KEY environment variable is not set. "
-        "Set it before running: export GROQ_API_KEY='gsk_...'"
+        "GROQ_API_KEY is not set. Put it in a .env file like:\n"
+        "GROQ_API_KEY=gsk_...\n"
     )
 
 client = AsyncGroq(api_key=api_key)
@@ -52,7 +56,6 @@ async def on_chat_start():
         welcome_md = Path("chainlit.md").read_text(encoding="utf-8")
         await cl.Message(content=welcome_md).send()
     except FileNotFoundError:
-        # Fallback simple welcome
         await cl.Message(
             content="Welcome to ValorCare AI. You can ask general questions about supporting a veteran."
         ).send()
@@ -95,7 +98,6 @@ async def on_message(message: cl.Message):
 
     await msg.update()
 
-    # Update history with structured roles
     history.append({"role": "user", "content": message.content})
     history.append({"role": "assistant", "content": response_text})
 
