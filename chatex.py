@@ -72,7 +72,8 @@ def build_messages(instruction: str, history: List[Dict[str, Any]]) -> List[Dict
         "- If the user mentions self-harm, suicide, or immediate danger, gently encourage them to contact "
         "emergency services or a crisis hotline right away, instead of trying to handle it yourself.\n\n"
         "Keep responses clear, empathetic, and focused. Aim for at most a few short paragraphs, "
-        "but don’t cut useful explanations short.\n"
+        "but don’t cut useful explanations short.\n\n"
+        "Think step by step before providing your final answer."
     )
 
     messages: List[Dict[str, str]] = [{"role": "system", "content": system}]
@@ -98,6 +99,9 @@ async def on_chat_start():
 @cl.on_message
 async def on_message(message: cl.Message):
     history: List[Dict[str, str]] = cl.user_session.get("message_history") or []
+
+    settings = cl.user_session.get("settings", {})
+    hide_chain_of_thought = settings.get("hideChainOfThought", False)
 
     user_content = message.content
     if message.elements:
@@ -137,7 +141,17 @@ async def on_message(message: cl.Message):
         await msg.stream_token(delta)
         response_text += delta
 
-    await msg.update()
+    # Process the response based on settings
+    if hide_chain_of_thought:
+        # Try to extract the final answer
+        if "Final answer:" in response_text:
+            final_answer = response_text.split("Final answer:", 1)[1].strip()
+            await msg.update(content=final_answer)
+        else:
+            # If no "Final answer:", assume the whole response is the answer
+            await msg.update()
+    else:
+        await msg.update()
 
     history.append({"role": "user", "content": message.content})
     history.append({"role": "assistant", "content": response_text})
