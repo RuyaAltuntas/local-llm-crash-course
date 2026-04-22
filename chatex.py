@@ -6,6 +6,10 @@ import chainlit as cl
 from groq import AsyncGroq
 from dotenv import load_dotenv
 
+from PyPDF2 import PdfReader
+from docx import Document
+import openpyxl
+
 # Load variables from .env file automatically
 load_dotenv()
 
@@ -21,6 +25,36 @@ if not api_key:
 client = AsyncGroq(api_key=api_key)
 
 print("Client initialized.")
+
+
+def extract_text_from_file(file_path: str) -> str:
+    ext = Path(file_path).suffix.lower()
+    try:
+        if ext == '.pdf':
+            reader = PdfReader(file_path)
+            text = ''
+            for page in reader.pages:
+                text += page.extract_text() + '\n'
+            return text
+        elif ext == '.docx':
+            doc = Document(file_path)
+            text = '\n'.join([para.text for para in doc.paragraphs])
+            return text
+        elif ext == '.xlsx':
+            wb = openpyxl.load_workbook(file_path, data_only=True)
+            text = ''
+            for sheet_name in wb.sheetnames:
+                sheet = wb[sheet_name]
+                text += f'Sheet: {sheet_name}\n'
+                for row in sheet.iter_rows(values_only=True):
+                    row_text = '\t'.join(str(cell) if cell is not None else '' for cell in row)
+                    text += row_text + '\n'
+                text += '\n'
+            return text
+        else:
+            return f"Unsupported file type: {ext}"
+    except Exception as e:
+        return f"Error extracting text: {str(e)}"
 
 
 def build_messages(instruction: str, history: List[Dict[str, Any]]) -> List[Dict[str, str]]:
@@ -65,10 +99,17 @@ async def on_chat_start():
 async def on_message(message: cl.Message):
     history: List[Dict[str, str]] = cl.user_session.get("message_history") or []
 
+    user_content = message.content
+    if message.elements:
+        for element in message.elements:
+            if hasattr(element, 'path') and element.path:
+                extracted = extract_text_from_file(element.path)
+                user_content += f"\n\n--- Content from {element.name} ---\n{extracted}\n--- End of {element.name} ---\n"
+
     msg = cl.Message(content="")
     await msg.send()
 
-    messages = build_messages(message.content, history)
+    messages = build_messages(user_content, history)
 
     response_text = ""
 
